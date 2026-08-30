@@ -171,13 +171,15 @@
     <div class="modal">
       <div class="modal-head"><span>관리자 · 종목 관리</span><button class="modal-close" id="adminModalClose">✕</button></div>
       <div class="field-box">
-        <div style="font-size:12px;color:var(--dim);margin-bottom:8px;font-weight:700;">새 종목 상장</div>
+        <div style="font-size:12px;color:var(--dim);margin-bottom:8px;font-weight:700;">새 종목 청약 개설</div>
         <input id="newItemName" placeholder="종목명" />
         <input id="newItemCategory" placeholder="카테고리 (예: 복지포인트, 사무용품, 휴가)" />
         <div class="row2">
-          <input id="newItemPrice" placeholder="시작가(P)" type="number" />
+          <input id="newItemPrice" placeholder="청약가(발행가, P)" type="number" />
+          <input id="newItemSubQty" placeholder="모집수량(100단위)" type="number" step="100" />
         </div>
-        <button class="primary-btn" id="addItemBtn" style="margin-top:6px;">상장</button>
+        <button class="primary-btn" id="addItemBtn" style="margin-top:6px;">청약 개설</button>
+        <div style="font-size:10.5px;color:var(--faint);margin-top:6px;">개설 후 사용자들이 청약 신청 → 관리자가 "청약마감"을 누르면 신청 순서대로 배정되고 거래가 시작됩니다. 상장폐지 시 그 시점 보유자 전원에게 이 청약가로 매입됩니다.</div>
       </div>
       <div style="font-size:12px;color:var(--dim);margin-bottom:4px;font-weight:700;">등록된 종목</div>
       <div id="adminItemsList"></div>
@@ -262,6 +264,7 @@ const state = {
   account: null,        // exchange_accounts/{uid}
   market: {},            // { itemId: {...} }
   orderbook: {},          // { itemId: {bids:[], asks:[]} }
+  subscriptions: {},       // { itemId: {applications:[], closed} }
   trades: [],              // recent trades (all items), newest first
   adminPw: DEFAULT_ADMIN_PW,
   isAdmin: false,
@@ -378,7 +381,16 @@ function attachListeners(){
     if (snap.exists) { state.account = snap.data(); renderAll(); }
   });
 
-  state.unsubs = [u2,u3,u4,u5];
+  const u6 = db.collection('exchange_subscriptions').onSnapshot(qs=>{
+    qs.docChanges().forEach(ch=>{
+      const id = ch.doc.id;
+      if (ch.type === 'removed') delete state.subscriptions[id];
+      else state.subscriptions[id] = ch.doc.data();
+    });
+    renderAll();
+  });
+
+  state.unsubs = [u2,u3,u4,u5,u6];
 }
 
 /* =========================================================
@@ -407,6 +419,27 @@ async function cancelOrder(itemId, orderId, side){
 }
 
 /* =========================================================
+   청약(공모)
+========================================================= */
+async function applyForSubscription(itemId, qty){
+  try {
+    await callFn('applyForSubscription', { itemId, qty });
+    toast('청약 신청이 접수되었습니다.', 'ok');
+  } catch (e) {
+    toast(e.message || '청약 신청 중 오류가 발생했습니다.', 'error');
+  }
+}
+async function closeSubscription(itemId){
+  if (!confirm('청약을 마감하고 배정을 확정하시겠습니까? 이후에는 되돌릴 수 없습니다.')) return;
+  try {
+    await callFn('closeSubscription', { itemId, password: state.adminPw });
+    toast('청약이 마감되고 배정이 완료되었습니다.', 'ok');
+  } catch (e) {
+    toast(e.message || '청약 마감 중 오류가 발생했습니다.', 'error');
+  }
+}
+
+/* =========================================================
    관리자 기능 (비밀번호는 서버에서만 검증됨)
 ========================================================= */
 function tryAdmin(){
@@ -425,27 +458,30 @@ function openAdminModal(){
 }
 function closeAdminModal(){ document.getElementById('adminModalBg').classList.remove('show'); }
 
-async function adminAddItem(){
+async function adminCreateSubscription(){
   const name = document.getElementById('newItemName').value.trim();
   const category = document.getElementById('newItemCategory').value.trim() || '기타';
-  const price = parseInt(document.getElementById('newItemPrice').value, 10);
-  if (!name || !price || price <= 0) { toast('종목명과 시작가를 입력하세요.', 'error'); return; }
+  const issuePrice = parseInt(document.getElementById('newItemPrice').value, 10);
+  const subscriptionQty = parseInt(document.getElementById('newItemSubQty').value, 10);
+  if (!name || !issuePrice || issuePrice <= 0) { toast('종목명과 청약가를 입력하세요.', 'error'); return; }
+  if (!subscriptionQty || subscriptionQty < 100 || subscriptionQty % 100 !== 0) { toast('모집수량은 100 단위로 100개 이상 입력하세요.', 'error'); return; }
   try {
-    await callFn('adminAddItem', { name, category, price, password: state.adminPw });
+    await callFn('adminCreateSubscription', { name, category, issuePrice, subscriptionQty, password: state.adminPw });
     document.getElementById('newItemName').value='';
     document.getElementById('newItemCategory').value='';
     document.getElementById('newItemPrice').value='';
-    toast('종목이 상장되었습니다.', 'ok');
+    document.getElementById('newItemSubQty').value='';
+    toast('청약이 개설되었습니다.', 'ok');
   } catch (e) {
     toast(e.message || '처리 중 오류가 발생했습니다.', 'error');
   }
 }
 async function adminDelistItem(id){
-  if (!confirm('이 종목을 상장폐지하시겠습니까? 미체결 주문이 있으면 먼저 정리해야 합니다.')) return;
+  if (!confirm('이 종목을 상장폐지하시겠습니까? 그 시점 보유자 전원에게 최초 청약가로 강제 매입 처리됩니다.')) return;
   try {
     await callFn('adminDelistItem', { itemId: id, password: state.adminPw });
     if (state.selectedItem === id) state.selectedItem = null;
-    toast('상장폐지되었습니다.', 'ok');
+    toast('상장폐지 및 매입 처리가 완료되었습니다.', 'ok');
   } catch (e) {
     toast(e.message || '처리 중 오류가 발생했습니다.', 'error');
   }
@@ -473,18 +509,28 @@ async function adminChangePw(){
 function renderAdminItems(){
   const el = document.getElementById('adminItemsList');
   const items = Object.values(state.market);
-  el.innerHTML = items.map(it => `
+  el.innerHTML = items.map(it => {
+    const isSub = it.status === 'subscription';
+    const sub = state.subscriptions[it.id];
+    const requested = sub ? (sub.applications||[]).reduce((s,a)=>s+a.qty,0) : 0;
+    return `
     <div class="admin-item-row">
       <div>
-        <div style="font-weight:600;">${esc(it.name)}</div>
-        <div class="mono" style="color:var(--faint);font-size:10.5px;">${fmt(it.price)}P · ${esc(it.category||'기타')}</div>
+        <div style="font-weight:600;">${esc(it.name)} ${isSub?'<span class="badge-limit" style="background:var(--gold);color:#1A1400;">청약중</span>':''}</div>
+        <div class="mono" style="color:var(--faint);font-size:10.5px;">
+          ${isSub ? `청약가 ${fmt(it.issuePrice)}P · 신청 ${fmt(requested)}/${fmt(it.subscriptionQty)}` : `${fmt(it.price)}P · ${esc(it.category||'기타')}`}
+        </div>
       </div>
       <div style="display:flex;gap:6px;">
-        <button class="small-icon-btn" onclick="adminResetRef('${it.id}')" title="기준가 재설정">기준가↺</button>
-        <button class="small-icon-btn" style="color:var(--up);" onclick="adminDelistItem('${it.id}')" title="상장폐지">삭제</button>
+        ${isSub
+          ? `<button class="small-icon-btn" onclick="closeSubscription('${it.id}')" title="청약 마감 및 배정">청약마감</button>`
+          : `<button class="small-icon-btn" onclick="adminResetRef('${it.id}')" title="기준가 재설정">기준가↺</button>
+             <button class="small-icon-btn" style="color:var(--up);" onclick="adminDelistItem('${it.id}')" title="상장폐지(매입)">상장폐지</button>`
+        }
       </div>
     </div>
-  `).join('') || '<div style="font-size:12px;color:var(--faint);">등록된 종목이 없습니다.</div>';
+  `;
+  }).join('') || '<div style="font-size:12px;color:var(--faint);">등록된 종목이 없습니다.</div>';
 }
 
 /* =========================================================
@@ -578,7 +624,9 @@ function renderItemList(flashes){
       const chg = it.prevClose ? ((it.price - it.prevClose)/it.prevClose*100) : 0;
       const up = chg >= 0;
       const flashCls = flashes[it.id] === 'up' ? 'flash-up' : flashes[it.id] === 'down' ? 'flash-down' : '';
-      const limitBadge = it.price >= it.upper ? `<span class="badge-limit" style="background:var(--up-bg);color:var(--up);">상한</span>`
+      const limitBadge = it.status === 'subscription'
+        ? `<span class="badge-limit" style="background:var(--gold);color:#1A1400;">청약중</span>`
+        : it.price >= it.upper ? `<span class="badge-limit" style="background:var(--up-bg);color:var(--up);">상한</span>`
         : it.price <= it.lower ? `<span class="badge-limit" style="background:var(--down-bg);color:var(--down);">하한</span>` : '';
       return `
         <div class="item-row ${flashCls} ${it.id===state.selectedItem?'selected':''}" data-item="${it.id}">
@@ -596,6 +644,9 @@ function renderDetail(){
   const el = document.getElementById('detail');
   const item = state.selectedItem ? state.market[state.selectedItem] : null;
   if (!item) { el.innerHTML = '<div style="color:var(--faint);text-align:center;margin-top:60px;">종목을 선택하세요.</div>'; return; }
+
+  if (item.status === 'subscription') { renderSubscriptionDetail(el, item); return; }
+
   const chg = item.prevClose ? ((item.price-item.prevClose)/item.prevClose*100) : 0;
   const up = chg >= 0;
   const book = state.orderbook[item.id] || { bids:[], asks:[] };
@@ -685,6 +736,62 @@ function renderDetail(){
   el.querySelectorAll('[data-cancel-id]').forEach(b=>b.onclick=()=>cancelOrder(item.id, b.dataset.cancelId, b.dataset.cancelSide));
 }
 
+function renderSubscriptionDetail(el, item){
+  const sub = state.subscriptions[item.id] || { applications: [] };
+  const apps = sub.applications || [];
+  const requested = apps.reduce((s,a)=>s+a.qty,0);
+  const pct = item.subscriptionQty ? Math.min(100, Math.round(requested/item.subscriptionQty*100)) : 0;
+  const myApps = apps.filter(a=>a.uid===state.username);
+  const myRequested = myApps.reduce((s,a)=>s+a.qty,0);
+  const myLocked = myRequested * item.issuePrice;
+
+  el.innerHTML = `
+    <div class="detail-head">
+      <div><div style="font-size:17px;font-weight:800;">${esc(item.name)} <span class="badge-limit" style="background:var(--gold);color:#1A1400;">청약중</span></div>
+      <div style="font-size:11.5px;color:var(--faint);margin-top:3px;">${esc(item.category||'기타')} · 청약 진행 중 (거래 미시작)</div></div>
+      <div style="text-align:right;"><div class="price-big mono">${fmt(item.issuePrice)}P</div>
+      <div class="chg mono" style="color:var(--dim);">청약가(고정)</div></div>
+    </div>
+
+    <div class="orderbox">
+      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-bottom:6px;">
+        <span>모집수량 <span class="mono" style="color:var(--text);font-weight:700;">${fmt(item.subscriptionQty)}주</span></span>
+        <span>신청 <span class="mono" style="color:var(--text);font-weight:700;">${fmt(requested)}주</span> (${pct}%)</span>
+      </div>
+      <div style="height:8px;background:var(--panel-alt);border-radius:4px;overflow:hidden;margin-bottom:14px;">
+        <div style="height:100%;width:${pct}%;background:var(--gold);"></div>
+      </div>
+
+      <div class="order-row">
+        <input id="subQty" type="number" placeholder="신청 수량 (100단위)" min="100" step="100" />
+      </div>
+      <button class="btn-buy" id="subApplyBtn" style="width:100%;">청약 신청</button>
+      <div class="hint">신청 즉시 (청약가 × 수량)만큼 잔고가 잠깁니다. 모집수량을 초과해 신청이 몰리면 <b>신청 순서대로</b> 모집수량이 찰 때까지만 배정되고, 나머지는 마감 시 잠금이 자동 해제됩니다.</div>
+    </div>
+
+    ${myApps.length ? `
+      <div class="section-title">나의 청약 신청내역 (총 ${fmt(myRequested)}주 · 잠긴 포인트 ${fmt(myLocked)}P)</div>
+      ${myApps.map(a=>`
+        <div class="myorder-row">
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:var(--gold);font-weight:700;">신청</span>
+            <span class="mono" style="color:var(--faint);">${new Date(a.time).toLocaleString('ko-KR',{hour12:false})}</span>
+          </div>
+          <div class="mono" style="margin-top:2px;">${a.qty}주 신청${a.allottedQty!==undefined ? ` · 배정 ${a.allottedQty}주` : ' · 배정 대기'}</div>
+        </div>
+      `).join('')}
+    ` : ''}
+  `;
+
+  const btn = document.getElementById('subApplyBtn');
+  btn.onclick = ()=>{
+    const qty = parseInt(document.getElementById('subQty').value, 10);
+    if (!qty || qty <= 0) { toast('신청 수량을 입력하세요.', 'error'); return; }
+    if (qty < 100 || qty % 100 !== 0) { toast('신청 수량은 100개 이상, 100 단위로만 가능합니다.', 'error'); return; }
+    applyForSubscription(item.id, qty);
+  };
+}
+
 function submitOrder(side){
   const item = state.market[state.selectedItem]; if (!item) return;
   const qty = parseInt(document.getElementById('orderQty').value, 10);
@@ -742,11 +849,12 @@ document.getElementById('logoutBtn').onclick = handleLogout;
 document.getElementById('adminBtn').onclick = tryAdmin;
 document.getElementById('adminModalClose').onclick = closeAdminModal;
 document.getElementById('adminModalBg').onclick = (e)=>{ if (e.target.id==='adminModalBg') closeAdminModal(); };
-document.getElementById('addItemBtn').onclick = adminAddItem;
+document.getElementById('addItemBtn').onclick = adminCreateSubscription;
 document.getElementById('changeAdminPwBtn').onclick = adminChangePw;
 
 window.adminDelistItem = adminDelistItem;
 window.adminResetRef = adminResetRef;
+window.closeSubscription = closeSubscription;
 
 if (!db || !auth) {
   document.getElementById('loginErr').textContent = 'Firebase 연결에 실패했습니다. 콘솔을 확인하세요.';
