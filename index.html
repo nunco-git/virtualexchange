@@ -644,13 +644,13 @@ function renderDetail(){
       <div style="font-size:12px;color:var(--dim);margin-bottom:8px;">보유 수량 <span class="mono" style="color:var(--text);font-weight:700;">${heldQty}주</span></div>
       <div class="order-row">
         ${state.orderType==='limit' ? `<input id="orderPrice" type="number" placeholder="가격" />` : ''}
-        <input id="orderQty" type="number" placeholder="수량" min="1" />
+        <input id="orderQty" type="number" placeholder="수량 (100단위)" min="100" step="100" />
       </div>
       <div class="buysell-row">
         <button class="btn-buy" id="buyBtn">매수</button>
         <button class="btn-sell" id="sellBtn">매도</button>
       </div>
-      <div class="hint">지정가 주문은 즉시 체결되지 않으면 호가창에 대기하며, 시장가 주문은 가능한 만큼만 즉시 체결됩니다.</div>
+      <div class="hint">최소 주문 수량 100개(100단위) · 최소 주문 총액 ${fmt(100000)}P. 지정가 주문은 즉시 체결되지 않으면 호가창에 대기하며, 시장가 주문은 가능한 만큼만 즉시 체결됩니다.</div>
     </div>
 
     ${uniqueMy.length ? `
@@ -689,11 +689,14 @@ function submitOrder(side){
   const item = state.market[state.selectedItem]; if (!item) return;
   const qty = parseInt(document.getElementById('orderQty').value, 10);
   if (!qty || qty <= 0) { toast('수량을 올바르게 입력하세요.', 'error'); return; }
+  if (qty < 100 || qty % 100 !== 0) { toast('주문 수량은 100개 이상, 100 단위로만 가능합니다.', 'error'); return; }
   let price = null;
   if (state.orderType === 'limit') {
     price = parseInt(document.getElementById('orderPrice').value, 10);
     if (!price || price <= 0) { toast('가격을 입력하세요.', 'error'); return; }
   }
+  const estAmount = (price || item.price) * qty;
+  if (estAmount < 100000) { toast('주문 총액은 최소 100,000P 이상이어야 합니다.', 'error'); return; }
   placeOrder(item.id, side, state.orderType, qty, price);
 }
 
