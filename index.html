@@ -1,0 +1,976 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>사내 가상재화 거래소</title>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.13.0/firebase-auth-compat.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=JetBrains+Mono:wght@500;600;700&display=swap');
+  :root{
+    --bg:#0A0D13; --panel:#12161F; --panel-alt:#161B26; --border:#232A38; --border-soft:#1A2029;
+    --text:#EAEDF3; --dim:#8891A2; --faint:#525A69;
+    --up:#FF4B4B; --up-bg:rgba(255,75,75,0.10); --down:#4C8DFF; --down-bg:rgba(76,141,255,0.10);
+    --gold:#C9A227; --gold-soft:#E8CF7A;
+  }
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-serif;}
+  .mono{font-family:'JetBrains Mono',monospace;}
+  ::-webkit-scrollbar{width:8px;height:8px;} ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
+  input,button,select{font-family:inherit;}
+  button{cursor:pointer;}
+  #app{max-width:1280px;margin:0 auto;min-height:100vh;display:flex;flex-direction:column;}
+
+  #banner{display:none;background:#3a1d1d;color:#ffb4b4;padding:10px 16px;font-size:13px;border-bottom:1px solid #5a2c2c;}
+  #banner.show{display:block;}
+
+  /* login */
+  #loginScreen{flex:1;display:flex;align-items:center;justify-content:center;padding:24px;}
+  .login-box{width:340px;text-align:center;}
+  .logo-badge{width:44px;height:44px;margin:0 auto 18px;border-radius:10px;background:linear-gradient(135deg,var(--gold),#8A6E14);display:flex;align-items:center;justify-content:center;font-weight:900;font-size:18px;color:#1A1400;}
+  .login-title{font-size:20px;font-weight:800;letter-spacing:-0.02em;}
+  .login-sub{font-size:12.5px;color:var(--dim);margin:6px 0 22px;line-height:1.6;}
+  .login-input{width:100%;background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:11px 14px;color:var(--text);font-size:14px;margin-bottom:10px;}
+  .login-btn{width:100%;background:var(--gold);color:#1A1400;border:none;border-radius:8px;padding:11px 0;font-weight:700;font-size:14px;}
+  .google-btn{width:100%;background:#fff;color:#1f1f1f;border:1px solid var(--border);border-radius:8px;padding:11px 0;font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center;gap:10px;}
+  .google-btn img{width:18px;height:18px;}
+  .login-toggle{font-size:12px;color:var(--dim);margin-top:14px;cursor:pointer;text-decoration:underline;}
+  .login-err{color:var(--up);font-size:12px;margin-top:8px;min-height:16px;}
+
+  /* header */
+  #header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--border);background:var(--panel);}
+  .brand{display:flex;align-items:center;gap:8px;font-weight:800;font-size:14.5px;white-space:nowrap;}
+  #marquee{flex:1;overflow:hidden;height:22px;border-left:1px solid var(--border);border-right:1px solid var(--border);padding:0 12px;display:flex;align-items:center;}
+  #marqueeTrack{display:flex;width:max-content;animation:marquee 30s linear infinite;font-size:11.5px;color:var(--dim);}
+  @keyframes marquee{0%{transform:translateX(0)}100%{transform:translateX(-50%)}}
+  .marquee-item{margin-right:26px;white-space:nowrap;}
+  #headerRight{display:flex;align-items:center;gap:10px;white-space:nowrap;font-size:13px;}
+  .iconbtn{background:transparent;border:1px solid var(--border);border-radius:6px;padding:6px 8px;color:var(--dim);font-size:12px;}
+
+  /* body layout */
+  #body{display:grid;grid-template-columns:250px 1fr 280px;flex:1;min-height:0;}
+  #itemList{border-right:1px solid var(--border);background:var(--panel);overflow-y:auto;max-height:calc(100vh - 46px);}
+  .list-head{padding:10px 12px 4px;font-size:11px;color:var(--faint);font-weight:700;}
+  .cat-tabs{display:flex;gap:4px;flex-wrap:wrap;padding:0 10px 8px;}
+  .cat-tab{font-size:10.5px;padding:3px 8px;border-radius:12px;border:1px solid var(--border);color:var(--dim);background:transparent;}
+  .cat-tab.active{background:var(--gold);color:#1A1400;border-color:var(--gold);font-weight:700;}
+  .item-row{padding:9px 12px;border-left:2px solid transparent;cursor:pointer;}
+  .item-row:hover,.item-row.selected{background:var(--panel-alt);}
+  .item-row.selected{border-left-color:var(--gold);}
+  .item-top{display:flex;justify-content:space-between;align-items:center;}
+  .item-name{font-size:12.5px;font-weight:600;max-width:140px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .badge-limit{font-size:10px;padding:1px 5px;border-radius:3px;font-weight:700;}
+  .item-bottom{display:flex;justify-content:space-between;align-items:baseline;margin-top:2px;}
+  .flash-up{animation:flashUp .9s ease-out;} .flash-down{animation:flashDown .9s ease-out;}
+  @keyframes flashUp{0%{background:var(--up-bg)}100%{background:transparent}}
+  @keyframes flashDown{0%{background:var(--down-bg)}100%{background:transparent}}
+
+  #detail{padding:18px;overflow-y:auto;max-height:calc(100vh - 46px);}
+  .detail-head{display:flex;justify-content:space-between;align-items:flex-start;}
+  .price-big{font-size:26px;font-weight:800;}
+  .chg{font-size:12px;font-weight:700;}
+  .interval-tabs{display:flex;gap:4px;margin:12px 0 4px;}
+  .itab{font-size:11px;padding:4px 10px;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--dim);}
+  .itab.active{background:var(--panel-alt);color:var(--text);border-color:var(--gold);}
+  #candleCanvas{width:100%;height:220px;display:block;}
+  .limits-row{display:flex;gap:16px;font-size:11.5px;color:var(--dim);margin-top:6px;}
+
+  .orderbox{margin-top:18px;background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:14px;}
+  .type-tabs{display:flex;gap:6px;margin-bottom:10px;}
+  .ttab{flex:1;font-size:12px;padding:6px 0;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--dim);}
+  .ttab.active{background:var(--panel-alt);color:var(--text);border-color:var(--gold);}
+  .order-row{display:flex;gap:8px;margin-bottom:8px;}
+  .order-row input{flex:1;background:var(--panel-alt);border:1px solid var(--border);border-radius:7px;padding:9px 10px;color:var(--text);font-size:13.5px;}
+  .buysell-row{display:flex;gap:8px;}
+  .btn-buy{flex:1;background:var(--up);border:none;border-radius:7px;padding:10px 0;color:#1A0505;font-weight:700;font-size:13px;}
+  .btn-sell{flex:1;background:var(--down);border:none;border-radius:7px;padding:10px 0;color:#04101F;font-weight:700;font-size:13px;}
+  .hint{font-size:11px;color:var(--faint);margin-top:8px;}
+
+  .orderbook-panel{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px;font-size:11.5px;}
+  .ob-col-title{font-weight:700;margin-bottom:4px;}
+  .ob-row{display:flex;justify-content:space-between;padding:3px 6px;border-radius:4px;}
+  .ob-ask{background:var(--down-bg);color:var(--down);}
+  .ob-bid{background:var(--up-bg);color:var(--up);}
+
+  .section-title{font-size:11px;color:var(--faint);font-weight:700;margin:18px 0 6px;}
+  .trade-row{display:flex;justify-content:space-between;padding:7px 12px;border-top:1px solid var(--border-soft);font-size:11.5px;}
+
+  #portfolio{border-left:1px solid var(--border);background:var(--panel);padding:14px;overflow-y:auto;max-height:calc(100vh - 46px);}
+  .hold-row{padding:9px 0;border-top:1px solid var(--border-soft);}
+  .hold-top{display:flex;justify-content:space-between;font-size:12.5px;font-weight:600;}
+  .hold-bottom{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-top:2px;}
+  .myorder-row{padding:8px 0;border-top:1px solid var(--border-soft);font-size:11px;}
+  .cancel-btn{font-size:10px;color:var(--up);background:transparent;border:1px solid var(--up);border-radius:4px;padding:2px 6px;}
+
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);padding:10px 18px;border-radius:8px;font-size:13px;z-index:1000;font-weight:500;display:none;box-shadow:0 8px 24px rgba(0,0,0,0.4);}
+  #toast.ok{background:#12241A;border:1px solid #2E7D52;color:#8FE3B4;display:block;}
+  #toast.err{background:#2A1418;border:1px solid var(--up);color:#FF9B9B;display:block;}
+
+  .modal-bg{position:fixed;inset:0;background:rgba(0,0,0,0.55);display:none;align-items:center;justify-content:center;z-index:999;}
+  .modal-bg.show{display:flex;}
+  .modal{width:460px;max-height:82vh;overflow-y:auto;background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:20px;}
+  .modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;font-weight:800;font-size:14.5px;}
+  .modal-close{background:transparent;border:none;color:var(--dim);font-size:16px;}
+  .field-box{border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px;}
+  .field-box input,.field-box select{width:100%;margin-bottom:6px;background:var(--panel-alt);border:1px solid var(--border);border-radius:6px;padding:8px;color:var(--text);font-size:12.5px;}
+  .field-box .row2{display:flex;gap:6px;}
+  .primary-btn{width:100%;background:var(--gold);color:#1A1400;border:none;border-radius:6px;padding:8px 0;font-weight:700;font-size:12.5px;}
+  .admin-item-row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-top:1px solid var(--border-soft);font-size:12px;}
+  .small-icon-btn{background:var(--panel-alt);border:1px solid var(--border);border-radius:6px;padding:5px 7px;color:var(--dim);font-size:11px;}
+
+  @media (max-width:900px){
+    #body{grid-template-columns:1fr;}
+    #itemList,#portfolio{max-height:260px;border:none;border-bottom:1px solid var(--border);}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="banner"></div>
+
+  <div id="loginScreen">
+    <div class="login-box">
+      <div class="logo-badge">사</div>
+      <div class="login-title">사내 가상재화 거래소</div>
+      <div class="login-sub" id="loginSub">구글 계정으로 로그인하세요<br/>첫 접속 시 계정이 자동 생성되고 1,000,000P가 지급됩니다</div>
+      <button class="google-btn" id="googleLoginBtn">
+        <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="" />
+        Google로 로그인
+      </button>
+      <div class="login-err" id="loginErr"></div>
+    </div>
+    <div id="loginLoading" style="display:none;color:var(--dim);font-size:12.5px;margin-top:14px;">로그인 처리 중…</div>
+    </div>
+  </div>
+
+  <div id="mainScreen" style="display:none;flex:1;flex-direction:column;">
+    <div id="header">
+      <div class="brand"><div class="logo-badge" style="width:24px;height:24px;font-size:11px;border-radius:6px;">사</div>사내 거래소</div>
+      <div id="marquee"><div id="marqueeTrack"></div></div>
+      <div id="headerRight">
+        <span id="balanceDisplay" class="mono"></span>
+        <span id="userDisplay"></span>
+        <button class="iconbtn" id="adminBtn">관리자</button>
+        <button class="iconbtn" id="logoutBtn">로그아웃</button>
+      </div>
+    </div>
+
+    <div id="body">
+      <div id="itemList"></div>
+      <div id="detail"></div>
+      <div id="portfolio"></div>
+    </div>
+  </div>
+
+  <div id="toast"></div>
+
+  <div class="modal-bg" id="adminModalBg">
+    <div class="modal">
+      <div class="modal-head"><span>관리자 · 종목 관리</span><button class="modal-close" id="adminModalClose">✕</button></div>
+      <div class="field-box">
+        <div style="font-size:12px;color:var(--dim);margin-bottom:8px;font-weight:700;">새 종목 상장</div>
+        <input id="newItemName" placeholder="종목명" />
+        <input id="newItemCategory" placeholder="카테고리 (예: 복지포인트, 사무용품, 휴가)" />
+        <div class="row2">
+          <input id="newItemPrice" placeholder="시작가(P)" type="number" />
+        </div>
+        <button class="primary-btn" id="addItemBtn" style="margin-top:6px;">상장</button>
+      </div>
+      <div style="font-size:12px;color:var(--dim);margin-bottom:4px;font-weight:700;">등록된 종목</div>
+      <div id="adminItemsList"></div>
+      <div class="field-box" style="margin-top:16px;">
+        <div style="font-size:12px;color:var(--dim);margin-bottom:8px;font-weight:700;">관리자 비밀번호 변경</div>
+        <input id="newAdminPw" placeholder="새 비밀번호" type="password" />
+        <button class="primary-btn" id="changeAdminPwBtn">변경</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================
+   Firebase 초기화
+========================================================= */
+const firebaseConfig = {
+  apiKey: "AIzaSyDak2ixmohFY8K2VAP6xzzA2qTbaGUgSyw",
+  authDomain: "virtualexchange-3c9c1.firebaseapp.com",
+  projectId: "virtualexchange-3c9c1",
+  storageBucket: "virtualexchange-3c9c1.firebasestorage.app",
+  messagingSenderId: "76861799976",
+  appId: "1:76861799976:web:a9b7fee38817c6fa753f1d",
+  measurementId: "G-MJB5K7G02G"
+};
+let db = null, auth = null;
+try {
+  firebase.initializeApp(firebaseConfig);
+  db = firebase.firestore();
+  auth = firebase.auth();
+} catch (e) {
+  showBanner("Firebase 초기화 실패: " + e.message);
+}
+function showBanner(msg){
+  const b = document.getElementById('banner');
+  b.textContent = msg; b.classList.add('show');
+}
+
+/* =========================================================
+   상수 / 유틸
+========================================================= */
+const STARTING_BALANCE = 1000000;
+const DEFAULT_ADMIN_PW = 'admin1234';
+const DEFAULT_ITEMS = [
+  { name:'조기퇴근권', category:'복지포인트', price:2400 },
+  { name:'주차우선권', category:'복지포인트', price:1800 },
+  { name:'반차교환권', category:'휴가', price:5200 },
+  { name:'사무용품 우선구매권', category:'사무용품', price:900 },
+  { name:'회의실 프리패스', category:'시설', price:1500 },
+];
+const TRADE_LOG_LIMIT = 400;
+const HISTORY_CAP = 100;
+
+function fmt(n){ return Math.round(n||0).toLocaleString('ko-KR'); }
+function pctStr(n){ const s = n>0?'+':''; return s+n.toFixed(2)+'%'; }
+function clamp(v,min,max){ return Math.min(Math.max(v,min),max); }
+function uid(){ return db.collection('_').doc().id; }
+function nowMs(){ return Date.now(); }
+function esc(s){ const d=document.createElement('div'); d.textContent=s; return d.innerHTML; }
+
+let toastTimer = null;
+function toast(msg, type){
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = type === 'error' ? 'err' : 'ok';
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ t.className=''; t.style.display='none'; }, 2600);
+}
+
+/* =========================================================
+   전역 상태
+========================================================= */
+const state = {
+  username: null,        // = Firebase Auth uid, used as the account document key
+  displayName: null,     // 표시용 이름 (구글 프로필 이름)
+  photoURL: null,
+  account: null,        // exchange_accounts/{uid}
+  market: {},            // { itemId: {...} }
+  orderbook: {},          // { itemId: {bids:[], asks:[]} }
+  trades: [],              // recent trades (all items), newest first
+  adminPw: DEFAULT_ADMIN_PW,
+  isAdmin: false,
+  selectedItem: null,
+  activeCategory: '전체',
+  orderType: 'limit',       // limit | market
+  interval: '1m',
+  prevPrices: {},
+  unsubs: [],
+};
+
+/* =========================================================
+   부트스트랩: 기본 시세/설정 문서 없으면 생성
+========================================================= */
+async function bootstrapDefaults(){
+  const cfgRef = db.collection('exchange_config').doc('settings');
+  const cfgSnap = await cfgRef.get();
+  if (!cfgSnap.exists) {
+    await cfgRef.set({ adminPw: DEFAULT_ADMIN_PW });
+  }
+  const marketSnap = await db.collection('exchange_market').get();
+  if (marketSnap.empty) {
+    const batch = db.batch();
+    DEFAULT_ITEMS.forEach(it=>{
+      const id = uid();
+      const ref = db.collection('exchange_market').doc(id);
+      batch.set(ref, {
+        name: it.name, category: it.category, price: it.price, prevClose: it.price,
+        upper: Math.round(it.price*1.3), lower: Math.round(it.price*0.7),
+        volume: 0, active: true, createdAt: nowMs(),
+      });
+      const obRef = db.collection('exchange_orderbook').doc(id);
+      batch.set(obRef, { bids: [], asks: [] });
+    });
+    await batch.commit();
+  }
+}
+
+/* =========================================================
+   로그인 / 계정 (Google 로그인)
+========================================================= */
+async function handleGoogleLogin(){
+  const errEl = document.getElementById('loginErr');
+  errEl.textContent = '';
+  if (!auth) { errEl.textContent = 'Firebase Auth 연결에 실패했습니다.'; return; }
+  const provider = new firebase.auth.GoogleAuthProvider();
+  document.getElementById('loginLoading').style.display = 'block';
+  try {
+    await auth.signInWithPopup(provider);
+    // 이후 처리는 onAuthStateChanged에서 이어집니다.
+  } catch (e) {
+    document.getElementById('loginLoading').style.display = 'none';
+    if (e.code !== 'auth/popup-closed-by-user') {
+      errEl.textContent = '구글 로그인 중 오류: ' + e.message;
+    }
+  }
+}
+
+async function ensureAccount(user){
+  const ref = db.collection('exchange_accounts').doc(user.uid);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    const acc = {
+      uid: user.uid, email: user.email || '', displayName: user.displayName || user.email || '사용자',
+      balance: STARTING_BALANCE, holdings: {}, avgPrice: {}, lockedBalance: 0, lockedHoldings: {},
+      history: [], createdAt: nowMs(),
+    };
+    await ref.set(acc);
+    return acc;
+  }
+  return snap.data();
+}
+
+function handleLogout(){
+  state.unsubs.forEach(u=>u&&u());
+  state.unsubs = [];
+  state.username = null; state.account = null; state.isAdmin = false;
+  auth.signOut();
+  document.getElementById('mainScreen').style.display = 'none';
+  document.getElementById('loginScreen').style.display = 'flex';
+  document.getElementById('loginLoading').style.display = 'none';
+}
+
+function enterMain(user){
+  state.username = user.uid;
+  state.displayName = state.account.displayName || user.displayName || user.email;
+  state.photoURL = user.photoURL || '';
+  document.getElementById('loginScreen').style.display = 'none';
+  document.getElementById('mainScreen').style.display = 'flex';
+  document.getElementById('userDisplay').textContent = state.displayName + '님';
+  attachListeners();
+}
+
+if (auth) {
+  auth.onAuthStateChanged(async (user)=>{
+    if (user) {
+      document.getElementById('loginLoading').style.display = 'block';
+      try {
+        await bootstrapDefaults();
+        state.account = await ensureAccount(user);
+        enterMain(user);
+      } catch (e) {
+        document.getElementById('loginErr').textContent = '계정 처리 중 오류: ' + e.message;
+      } finally {
+        document.getElementById('loginLoading').style.display = 'none';
+      }
+    }
+  });
+}
+
+/* =========================================================
+   실시간 구독
+========================================================= */
+function attachListeners(){
+  const u1 = db.collection('exchange_config').doc('settings').onSnapshot(snap=>{
+    if (snap.exists) state.adminPw = snap.data().adminPw || DEFAULT_ADMIN_PW;
+  });
+
+  const u2 = db.collection('exchange_market').onSnapshot(qs=>{
+    const flashes = {};
+    qs.docChanges().forEach(ch=>{
+      const id = ch.doc.id; const data = ch.doc.data();
+      const prev = state.prevPrices[id];
+      if (prev !== undefined && data.price !== prev) flashes[id] = data.price > prev ? 'up' : 'down';
+      state.prevPrices[id] = data.price;
+      if (ch.type === 'removed') delete state.market[id];
+      else state.market[id] = { id, ...data };
+    });
+    if (!state.selectedItem) {
+      const ids = Object.keys(state.market);
+      if (ids.length) state.selectedItem = ids[0];
+    }
+    renderAll(flashes);
+  });
+
+  const u3 = db.collection('exchange_orderbook').onSnapshot(qs=>{
+    qs.docChanges().forEach(ch=>{
+      const id = ch.doc.id;
+      if (ch.type === 'removed') delete state.orderbook[id];
+      else state.orderbook[id] = ch.doc.data();
+    });
+    renderAll();
+  });
+
+  const u4 = db.collection('exchange_trades').orderBy('time','desc').limit(TRADE_LOG_LIMIT)
+    .onSnapshot(qs=>{
+      state.trades = qs.docs.map(d=>({ id:d.id, ...d.data() }));
+      renderAll();
+    });
+
+  const u5 = db.collection('exchange_accounts').doc(state.username).onSnapshot(snap=>{
+    if (snap.exists) { state.account = snap.data(); renderAll(); }
+  });
+
+  state.unsubs = [u1,u2,u3,u4,u5];
+}
+
+/* =========================================================
+   주문 매칭 엔진 (Firestore 트랜잭션)
+========================================================= */
+// side: 'buy' | 'sell', type: 'limit' | 'market'
+async function placeOrder(itemId, side, type, qty, limitPrice){
+  const orderId = uid();
+  const marketRef = db.collection('exchange_market').doc(itemId);
+  const bookRef = db.collection('exchange_orderbook').doc(itemId);
+  const takerRef = db.collection('exchange_accounts').doc(state.username);
+
+  try {
+    await db.runTransaction(async (tx)=>{
+      const marketSnap = await tx.get(marketRef);
+      const bookSnap = await tx.get(bookRef);
+      const takerSnap = await tx.get(takerRef);
+      if (!marketSnap.exists) throw new Error('존재하지 않는 종목입니다.');
+      if (!takerSnap.exists) throw new Error('계정 정보를 불러올 수 없습니다.');
+
+      const market = marketSnap.data();
+      const book = bookSnap.exists ? bookSnap.data() : { bids:[], asks:[] };
+      const taker = takerSnap.data();
+      taker.holdings = taker.holdings || {};
+      taker.avgPrice = taker.avgPrice || {};
+      taker.lockedHoldings = taker.lockedHoldings || {};
+      taker.lockedBalance = taker.lockedBalance || 0;
+      taker.history = taker.history || [];
+
+      if (type === 'limit') {
+        if (!limitPrice || limitPrice <= 0) throw new Error('가격을 입력하세요.');
+        if (limitPrice > market.upper || limitPrice < market.lower) {
+          throw new Error(`가격제한폭(${fmt(market.lower)}~${fmt(market.upper)}P)을 벗어났습니다.`);
+        }
+      }
+
+      // 사전 잔고/수량 체크
+      const availBalance = taker.balance - taker.lockedBalance;
+      const availQty = (taker.holdings[itemId]||0) - (taker.lockedHoldings[itemId]||0);
+      if (side === 'buy') {
+        const worstCase = type === 'limit' ? limitPrice*qty : market.upper*qty;
+        if (worstCase > availBalance + 0.0001) throw new Error('사용 가능한 포인트가 부족합니다.');
+      } else {
+        if (qty > availQty) throw new Error('사용 가능한 보유 수량이 부족합니다.');
+      }
+
+      // ---- 매칭 시뮬레이션 (순수 계산, in-memory) ----
+      const opposite = side === 'buy' ? [...book.asks] : [...book.bids];
+      opposite.sort((a,b)=> side === 'buy' ? (a.price - b.price || a.time - b.time) : (b.price - a.price || a.time - b.time));
+
+      let remaining = qty;
+      let spent = 0; // 시장가 매수 시 잔고 캡용
+      const fills = []; // {orderId, user, price, qty, remainQtyAfter}
+      const consumedIdx = []; // index within `opposite` fully or partially consumed
+
+      for (let i=0; i<opposite.length && remaining>0; i++){
+        const maker = opposite[i];
+        if (type === 'limit') {
+          const crosses = side === 'buy' ? maker.price <= limitPrice : maker.price >= limitPrice;
+          if (!crosses) break;
+        } else {
+          // 시장가: 상한/하한 범위 내 호가만 체결 허용
+          if (maker.price > market.upper || maker.price < market.lower) continue;
+        }
+        let fillQty = Math.min(remaining, maker.remainingQty);
+        if (side === 'buy') {
+          const costIfFilled = spent + maker.price*fillQty;
+          if (type === 'market' && costIfFilled > availBalance + 0.0001) {
+            const affordableQty = Math.floor((availBalance - spent) / maker.price);
+            if (affordableQty <= 0) break;
+            fillQty = Math.min(fillQty, affordableQty);
+          }
+        }
+        if (fillQty <= 0) continue;
+        fills.push({ orderId: maker.orderId, user: maker.user, price: maker.price, qty: fillQty });
+        remaining -= fillQty;
+        if (side === 'buy') spent += maker.price*fillQty;
+        maker.remainingQty -= fillQty;
+        consumedIdx.push(i);
+      }
+
+      if (type === 'market' && fills.length === 0) {
+        throw new Error('현재 체결 가능한 상대 주문이 없습니다.');
+      }
+
+      // maker 계정 문서들 미리 읽기 (모든 get은 write 이전에 완료되어야 함)
+      const makerUsers = [...new Set(fills.map(f=>f.user))];
+      const makerRefs = {}; const makerData = {};
+      for (const u of makerUsers) {
+        const ref = db.collection('exchange_accounts').doc(u);
+        const snap = await tx.get(ref);
+        makerRefs[u] = ref;
+        makerData[u] = snap.exists ? snap.data() : null;
+      }
+
+      // ---- 여기서부터 실제 반영 (write) ----
+      let lastPrice = market.price;
+      let totalFilledQty = 0;
+
+      for (const f of fills) {
+        totalFilledQty += f.qty;
+        lastPrice = f.price;
+        const amount = f.price * f.qty;
+
+        if (side === 'buy') {
+          // taker(매수자): 즉시 결제
+          taker.balance -= amount;
+          const prevQty = taker.holdings[itemId] || 0;
+          const prevAvg = taker.avgPrice[itemId] || 0;
+          const newQty = prevQty + f.qty;
+          taker.avgPrice[itemId] = Math.round((prevAvg*prevQty + amount) / newQty);
+          taker.holdings[itemId] = newQty;
+
+          // maker(매도자): 잠긴 수량 해제 + 대금 수령
+          const m = makerData[f.user];
+          if (m) {
+            m.lockedHoldings = m.lockedHoldings || {};
+            m.lockedHoldings[itemId] = Math.max(0, (m.lockedHoldings[itemId]||0) - f.qty);
+            m.balance = (m.balance||0) + amount;
+          }
+        } else {
+          // taker(매도자): 즉시 수량 차감 + 대금 수령
+          taker.holdings[itemId] = (taker.holdings[itemId]||0) - f.qty;
+          if (taker.holdings[itemId] <= 0) { delete taker.holdings[itemId]; delete taker.avgPrice[itemId]; }
+          taker.balance += amount;
+
+          // maker(매수자): 잠긴 잔고 해제 + 수량 수령
+          const m = makerData[f.user];
+          if (m) {
+            m.lockedBalance = Math.max(0, (m.lockedBalance||0) - amount);
+            m.holdings = m.holdings || {}; m.avgPrice = m.avgPrice || {};
+            const prevQty = m.holdings[itemId] || 0;
+            const prevAvg = m.avgPrice[itemId] || 0;
+            const newQty = prevQty + f.qty;
+            m.avgPrice[itemId] = Math.round((prevAvg*prevQty + amount) / newQty);
+            m.holdings[itemId] = newQty;
+          }
+        }
+
+        // 체결 로그
+        const tradeRef = db.collection('exchange_trades').doc();
+        tx.set(tradeRef, {
+          itemId, price: f.price, qty: f.qty, time: nowMs(),
+          buyer: side === 'buy' ? state.username : f.user,
+          seller: side === 'buy' ? f.user : state.username,
+        });
+      }
+
+      // maker 계정 반영
+      for (const u of makerUsers) {
+        if (makerData[u]) tx.set(makerRefs[u], makerData[u]);
+      }
+
+      // 호가창 갱신: 체결된 maker 주문 제거/축소
+      const restField = side === 'buy' ? 'asks' : 'bids';
+      const stillOpen = opposite.filter(o => o.remainingQty > 0.0001);
+      book[restField] = stillOpen;
+
+      // taker 지정가 잔량은 호가창에 등록 + 예약(lock)
+      if (type === 'limit' && remaining > 0.0001) {
+        const entry = { orderId, user: state.username, price: limitPrice, qty, remainingQty: remaining, time: nowMs() };
+        const myField = side === 'buy' ? 'bids' : 'asks';
+        book[myField] = [...(book[myField]||[]), entry];
+        if (side === 'buy') taker.lockedBalance = (taker.lockedBalance||0) + limitPrice*remaining;
+        else taker.lockedHoldings[itemId] = (taker.lockedHoldings[itemId]||0) + remaining;
+      }
+
+      taker.history = [
+        { id: uid(), time: new Date().toLocaleTimeString('ko-KR',{hour12:false}), itemId, name: market.name,
+          side, type, qty, filledQty: totalFilledQty, price: totalFilledQty ? Math.round(spentOrAvg(fills)) : (limitPrice||0) },
+        ...taker.history,
+      ].slice(0, HISTORY_CAP);
+
+      tx.set(takerRef, taker);
+      tx.set(bookRef, book);
+      if (totalFilledQty > 0) {
+        tx.set(marketRef, { ...market, price: lastPrice, volume: (market.volume||0) + totalFilledQty });
+      }
+    });
+
+    toast(`${side==='buy'?'매수':'매도'} 주문 처리 완료`, 'ok');
+  } catch (e) {
+    toast(e.message || '주문 처리 중 오류가 발생했습니다.', 'error');
+  }
+}
+function spentOrAvg(fills){
+  const totalQty = fills.reduce((s,f)=>s+f.qty,0);
+  const totalAmt = fills.reduce((s,f)=>s+f.price*f.qty,0);
+  return totalQty ? totalAmt/totalQty : 0;
+}
+
+async function cancelOrder(itemId, orderId, side){
+  const bookRef = db.collection('exchange_orderbook').doc(itemId);
+  const accRef = db.collection('exchange_accounts').doc(state.username);
+  try {
+    await db.runTransaction(async (tx)=>{
+      const bookSnap = await tx.get(bookRef);
+      const accSnap = await tx.get(accRef);
+      if (!bookSnap.exists || !accSnap.exists) throw new Error('데이터를 찾을 수 없습니다.');
+      const book = bookSnap.data();
+      const acc = accSnap.data();
+      const field = side === 'buy' ? 'bids' : 'asks';
+      const list = book[field] || [];
+      const idx = list.findIndex(o=>o.orderId===orderId && o.user===state.username);
+      if (idx === -1) throw new Error('이미 처리된 주문입니다.');
+      const order = list[idx];
+      list.splice(idx,1);
+      book[field] = list;
+      if (side === 'buy') {
+        acc.lockedBalance = Math.max(0, (acc.lockedBalance||0) - order.price*order.remainingQty);
+      } else {
+        acc.lockedHoldings = acc.lockedHoldings || {};
+        acc.lockedHoldings[itemId] = Math.max(0, (acc.lockedHoldings[itemId]||0) - order.remainingQty);
+      }
+      tx.set(bookRef, book);
+      tx.set(accRef, acc);
+    });
+    toast('주문이 취소되었습니다.', 'ok');
+  } catch (e) {
+    toast(e.message || '취소 중 오류가 발생했습니다.', 'error');
+  }
+}
+
+/* =========================================================
+   관리자 기능
+========================================================= */
+function tryAdmin(){
+  if (state.isAdmin) { openAdminModal(); return; }
+  const pw = prompt('관리자 비밀번호를 입력하세요');
+  if (pw === null) return;
+  if (pw === state.adminPw) { state.isAdmin = true; openAdminModal(); }
+  else toast('비밀번호가 올바르지 않습니다.', 'error');
+}
+function openAdminModal(){
+  renderAdminItems();
+  document.getElementById('adminModalBg').classList.add('show');
+}
+function closeAdminModal(){ document.getElementById('adminModalBg').classList.remove('show'); }
+
+async function adminAddItem(){
+  const name = document.getElementById('newItemName').value.trim();
+  const category = document.getElementById('newItemCategory').value.trim() || '기타';
+  const price = parseInt(document.getElementById('newItemPrice').value, 10);
+  if (!name || !price || price <= 0) { toast('종목명과 시작가를 입력하세요.', 'error'); return; }
+  const id = uid();
+  await db.collection('exchange_market').doc(id).set({
+    name, category, price, prevClose: price,
+    upper: Math.round(price*1.3), lower: Math.round(price*0.7),
+    volume: 0, active: true, createdAt: nowMs(),
+  });
+  await db.collection('exchange_orderbook').doc(id).set({ bids:[], asks:[] });
+  document.getElementById('newItemName').value='';
+  document.getElementById('newItemCategory').value='';
+  document.getElementById('newItemPrice').value='';
+  toast('종목이 상장되었습니다.', 'ok');
+  renderAdminItems();
+}
+async function adminDelistItem(id){
+  if (!confirm('이 종목을 상장폐지하시겠습니까? 미체결 주문이 있으면 먼저 정리해야 합니다.')) return;
+  const book = state.orderbook[id] || {bids:[],asks:[]};
+  if ((book.bids||[]).length || (book.asks||[]).length) {
+    toast('미체결 주문이 남아있어 상장폐지할 수 없습니다.', 'error'); return;
+  }
+  await db.collection('exchange_market').doc(id).delete();
+  await db.collection('exchange_orderbook').doc(id).delete();
+  if (state.selectedItem === id) state.selectedItem = null;
+  toast('상장폐지되었습니다.', 'ok');
+  renderAdminItems();
+}
+async function adminResetRef(id){
+  const m = state.market[id]; if (!m) return;
+  await db.collection('exchange_market').doc(id).update({
+    prevClose: m.price, upper: Math.round(m.price*1.3), lower: Math.round(m.price*0.7),
+  });
+  toast('기준가가 현재가로 재설정되었습니다.', 'ok');
+}
+async function adminChangePw(){
+  const pw = document.getElementById('newAdminPw').value;
+  if (!pw || pw.length < 4) { toast('4자 이상 입력하세요.', 'error'); return; }
+  await db.collection('exchange_config').doc('settings').set({ adminPw: pw });
+  document.getElementById('newAdminPw').value='';
+  toast('관리자 비밀번호가 변경되었습니다.', 'ok');
+}
+function renderAdminItems(){
+  const el = document.getElementById('adminItemsList');
+  const items = Object.values(state.market);
+  el.innerHTML = items.map(it => `
+    <div class="admin-item-row">
+      <div>
+        <div style="font-weight:600;">${esc(it.name)}</div>
+        <div class="mono" style="color:var(--faint);font-size:10.5px;">${fmt(it.price)}P · ${esc(it.category||'기타')}</div>
+      </div>
+      <div style="display:flex;gap:6px;">
+        <button class="small-icon-btn" onclick="adminResetRef('${it.id}')" title="기준가 재설정">기준가↺</button>
+        <button class="small-icon-btn" style="color:var(--up);" onclick="adminDelistItem('${it.id}')" title="상장폐지">삭제</button>
+      </div>
+    </div>
+  `).join('') || '<div style="font-size:12px;color:var(--faint);">등록된 종목이 없습니다.</div>';
+}
+
+/* =========================================================
+   캔들차트 (Canvas)
+========================================================= */
+const INTERVALS = { '1m':60*1000, '5m':5*60*1000, '1h':60*60*1000, '1d':24*60*60*1000 };
+function buildCandles(itemId, intervalKey){
+  const bucketMs = INTERVALS[intervalKey];
+  const itemTrades = state.trades.filter(t=>t.itemId===itemId).sort((a,b)=>a.time-b.time);
+  if (itemTrades.length === 0) return [];
+  const buckets = {};
+  itemTrades.forEach(t=>{
+    const bStart = Math.floor(t.time / bucketMs) * bucketMs;
+    if (!buckets[bStart]) buckets[bStart] = { t:bStart, o:t.price, h:t.price, l:t.price, c:t.price, v:0 };
+    const b = buckets[bStart];
+    b.h = Math.max(b.h, t.price); b.l = Math.min(b.l, t.price); b.c = t.price; b.v += t.qty;
+  });
+  return Object.values(buckets).sort((a,b)=>a.t-b.t).slice(-60);
+}
+function drawCandles(canvas, candles){
+  const ctx = canvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w*dpr; canvas.height = h*dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,w,h);
+  if (!candles.length) {
+    ctx.fillStyle = '#525A69'; ctx.font = '12px Noto Sans KR'; ctx.textAlign='center';
+    ctx.fillText('체결 데이터가 없습니다.', w/2, h/2);
+    return;
+  }
+  const pad = { l:6, r:6, t:10, b:10 };
+  let min = Math.min(...candles.map(c=>c.l)), max = Math.max(...candles.map(c=>c.h));
+  if (min === max) { min -= 1; max += 1; }
+  const range = max-min;
+  const plotW = w - pad.l - pad.r, plotH = h - pad.t - pad.b;
+  const cw = plotW / candles.length;
+  const yOf = v => pad.t + plotH - ((v-min)/range)*plotH;
+
+  candles.forEach((c,i)=>{
+    const x = pad.l + i*cw + cw/2;
+    const up = c.c >= c.o;
+    ctx.strokeStyle = up ? '#FF4B4B' : '#4C8DFF';
+    ctx.fillStyle = up ? '#FF4B4B' : '#4C8DFF';
+    ctx.beginPath(); ctx.moveTo(x, yOf(c.h)); ctx.lineTo(x, yOf(c.l)); ctx.stroke();
+    const bodyTop = yOf(Math.max(c.o,c.c)), bodyBot = yOf(Math.min(c.o,c.c));
+    const bw = Math.max(2, cw*0.6);
+    ctx.fillRect(x-bw/2, bodyTop, bw, Math.max(1, bodyBot-bodyTop));
+  });
+}
+
+/* =========================================================
+   렌더링
+========================================================= */
+function renderAll(flashes){
+  document.getElementById('balanceDisplay').textContent = state.account ? fmt(state.account.balance)+'P' : '';
+  renderMarquee();
+  renderItemList(flashes||{});
+  renderDetail();
+  renderPortfolio();
+}
+
+function renderMarquee(){
+  const track = document.getElementById('marqueeTrack');
+  const recent = state.trades.slice(0,20);
+  if (!recent.length) { track.innerHTML = '<span class="marquee-item">아직 체결 내역이 없습니다.</span>'; return; }
+  const html = recent.map(t=>{
+    const item = state.market[t.itemId];
+    return `<span class="marquee-item">${esc(item?item.name:'')} ${t.qty}주 @${fmt(t.price)}P</span>`;
+  }).join('');
+  track.innerHTML = html + html;
+}
+
+function categoriesOf(){
+  const cats = new Set(['전체']);
+  Object.values(state.market).forEach(it=>cats.add(it.category||'기타'));
+  return [...cats];
+}
+
+function renderItemList(flashes){
+  const el = document.getElementById('itemList');
+  const cats = categoriesOf();
+  const items = Object.values(state.market)
+    .filter(it => state.activeCategory==='전체' || (it.category||'기타')===state.activeCategory)
+    .sort((a,b)=>a.name.localeCompare(b.name));
+
+  el.innerHTML = `
+    <div class="list-head">종목 (${items.length})</div>
+    <div class="cat-tabs">${cats.map(c=>`<button class="cat-tab ${c===state.activeCategory?'active':''}" data-cat="${esc(c)}">${esc(c)}</button>`).join('')}</div>
+    ${items.map(it=>{
+      const chg = it.prevClose ? ((it.price - it.prevClose)/it.prevClose*100) : 0;
+      const up = chg >= 0;
+      const flashCls = flashes[it.id] === 'up' ? 'flash-up' : flashes[it.id] === 'down' ? 'flash-down' : '';
+      const limitBadge = it.price >= it.upper ? `<span class="badge-limit" style="background:var(--up-bg);color:var(--up);">상한</span>`
+        : it.price <= it.lower ? `<span class="badge-limit" style="background:var(--down-bg);color:var(--down);">하한</span>` : '';
+      return `
+        <div class="item-row ${flashCls} ${it.id===state.selectedItem?'selected':''}" data-item="${it.id}">
+          <div class="item-top"><span class="item-name">${esc(it.name)}</span>${limitBadge}</div>
+          <div class="item-bottom"><span class="mono" style="font-size:13px;font-weight:700;">${fmt(it.price)}</span>
+          <span class="mono" style="font-size:11px;font-weight:600;color:${up?'var(--up)':'var(--down)'};">${pctStr(chg)}</span></div>
+        </div>`;
+    }).join('')}
+  `;
+  el.querySelectorAll('.cat-tab').forEach(b=>b.onclick=()=>{ state.activeCategory=b.dataset.cat; renderAll(); });
+  el.querySelectorAll('.item-row').forEach(r=>r.onclick=()=>{ state.selectedItem=r.dataset.item; renderAll(); });
+}
+
+function renderDetail(){
+  const el = document.getElementById('detail');
+  const item = state.selectedItem ? state.market[state.selectedItem] : null;
+  if (!item) { el.innerHTML = '<div style="color:var(--faint);text-align:center;margin-top:60px;">종목을 선택하세요.</div>'; return; }
+  const chg = item.prevClose ? ((item.price-item.prevClose)/item.prevClose*100) : 0;
+  const up = chg >= 0;
+  const book = state.orderbook[item.id] || { bids:[], asks:[] };
+  const asks = [...book.asks].sort((a,b)=>b.price-a.price).slice(-6);
+  const bids = [...book.bids].sort((a,b)=>b.price-a.price).slice(0,6);
+  const acc = state.account || { holdings:{}, lockedHoldings:{} };
+  const heldQty = acc.holdings ? (acc.holdings[item.id]||0) : 0;
+  const itemTrades = state.trades.filter(t=>t.itemId===item.id).slice(0,8);
+  const uniqueMy = [
+    ...(book.bids||[]).filter(o=>o.user===state.username).map(o=>({...o,side:'buy'})),
+    ...(book.asks||[]).filter(o=>o.user===state.username).map(o=>({...o,side:'sell'})),
+  ];
+
+  el.innerHTML = `
+    <div class="detail-head">
+      <div><div style="font-size:17px;font-weight:800;">${esc(item.name)}</div>
+      <div style="font-size:11.5px;color:var(--faint);margin-top:3px;">${esc(item.category||'기타')} · 누적 거래량 ${fmt(item.volume)}주</div></div>
+      <div style="text-align:right;"><div class="price-big mono">${fmt(item.price)}P</div>
+      <div class="chg mono" style="color:${up?'var(--up)':'var(--down)'};">${pctStr(chg)}</div></div>
+    </div>
+    <div class="limits-row">
+      <span>기준가 <span class="mono" style="color:var(--text);">${fmt(item.prevClose)}</span></span>
+      <span style="color:var(--up);">상한가 <span class="mono">${fmt(item.upper)}</span></span>
+      <span style="color:var(--down);">하한가 <span class="mono">${fmt(item.lower)}</span></span>
+    </div>
+
+    <div class="interval-tabs">
+      ${Object.keys(INTERVALS).map(k=>`<button class="itab ${k===state.interval?'active':''}" data-int="${k}">${({'1m':'1분','5m':'5분','1h':'1시간','1d':'1일'})[k]}</button>`).join('')}
+    </div>
+    <canvas id="candleCanvas"></canvas>
+
+    <div class="orderbook-panel">
+      <div><div class="ob-col-title" style="color:var(--down);">매도 호가</div>
+        ${asks.length? asks.map(o=>`<div class="ob-row ob-ask"><span class="mono">${fmt(o.price)}</span><span class="mono">${o.remainingQty}</span></div>`).join('') : '<div style="color:var(--faint);">없음</div>'}
+      </div>
+      <div><div class="ob-col-title" style="color:var(--up);">매수 호가</div>
+        ${bids.length? bids.map(o=>`<div class="ob-row ob-bid"><span class="mono">${fmt(o.price)}</span><span class="mono">${o.remainingQty}</span></div>`).join('') : '<div style="color:var(--faint);">없음</div>'}
+      </div>
+    </div>
+
+    <div class="orderbox">
+      <div class="type-tabs">
+        <button class="ttab ${state.orderType==='limit'?'active':''}" data-type="limit">지정가</button>
+        <button class="ttab ${state.orderType==='market'?'active':''}" data-type="market">시장가</button>
+      </div>
+      <div style="font-size:12px;color:var(--dim);margin-bottom:8px;">보유 수량 <span class="mono" style="color:var(--text);font-weight:700;">${heldQty}주</span></div>
+      <div class="order-row">
+        ${state.orderType==='limit' ? `<input id="orderPrice" type="number" placeholder="가격" />` : ''}
+        <input id="orderQty" type="number" placeholder="수량" min="1" />
+      </div>
+      <div class="buysell-row">
+        <button class="btn-buy" id="buyBtn">매수</button>
+        <button class="btn-sell" id="sellBtn">매도</button>
+      </div>
+      <div class="hint">지정가 주문은 즉시 체결되지 않으면 호가창에 대기하며, 시장가 주문은 가능한 만큼만 즉시 체결됩니다.</div>
+    </div>
+
+    ${uniqueMy.length ? `
+      <div class="section-title">나의 미체결 주문</div>
+      ${uniqueMy.map(o=>`
+        <div class="myorder-row">
+          <div style="display:flex;justify-content:space-between;">
+            <span style="color:${o.side==='buy'?'var(--up)':'var(--down)'};font-weight:700;">${o.side==='buy'?'매수':'매도'} 대기</span>
+            <button class="cancel-btn" data-cancel-id="${o.orderId}" data-cancel-side="${o.side}">취소</button>
+          </div>
+          <div class="mono" style="color:var(--dim);margin-top:2px;">${fmt(o.price)}P × ${o.remainingQty}주</div>
+        </div>
+      `).join('')}
+    ` : ''}
+
+    <div class="section-title">체결 내역 · ${esc(item.name)}</div>
+    ${itemTrades.length ? itemTrades.map(t=>`
+      <div class="trade-row mono">
+        <span style="color:var(--faint);">${new Date(t.time).toLocaleTimeString('ko-KR',{hour12:false})}</span>
+        <span>${t.qty}주</span><span>${fmt(t.price)}P</span>
+      </div>
+    `).join('') : '<div style="padding:14px;color:var(--faint);font-size:12px;text-align:center;">체결 내역 없음</div>'}
+  `;
+
+  const canvas = document.getElementById('candleCanvas');
+  drawCandles(canvas, buildCandles(item.id, state.interval));
+
+  el.querySelectorAll('.itab').forEach(b=>b.onclick=()=>{ state.interval=b.dataset.int; renderDetail(); });
+  el.querySelectorAll('.ttab').forEach(b=>b.onclick=()=>{ state.orderType=b.dataset.type; renderDetail(); });
+  const buyBtn = document.getElementById('buyBtn'); if (buyBtn) buyBtn.onclick=()=>submitOrder('buy');
+  const sellBtn = document.getElementById('sellBtn'); if (sellBtn) sellBtn.onclick=()=>submitOrder('sell');
+  el.querySelectorAll('[data-cancel-id]').forEach(b=>b.onclick=()=>cancelOrder(item.id, b.dataset.cancelId, b.dataset.cancelSide));
+}
+
+function submitOrder(side){
+  const item = state.market[state.selectedItem]; if (!item) return;
+  const qty = parseInt(document.getElementById('orderQty').value, 10);
+  if (!qty || qty <= 0) { toast('수량을 올바르게 입력하세요.', 'error'); return; }
+  let price = null;
+  if (state.orderType === 'limit') {
+    price = parseInt(document.getElementById('orderPrice').value, 10);
+    if (!price || price <= 0) { toast('가격을 입력하세요.', 'error'); return; }
+  }
+  placeOrder(item.id, side, state.orderType, qty, price);
+}
+
+function renderPortfolio(){
+  const el = document.getElementById('portfolio');
+  const acc = state.account;
+  if (!acc) { el.innerHTML=''; return; }
+  const holdings = Object.entries(acc.holdings||{}).map(([id,q])=>{
+    const it = state.market[id]; if (!it) return null;
+    const avg = (acc.avgPrice||{})[id] || 0;
+    const value = it.price*q, cost = avg*q;
+    const plPct = cost ? ((value-cost)/cost*100) : 0;
+    return { name: it.name, q, avg, plPct };
+  }).filter(Boolean);
+
+  el.innerHTML = `
+    <div class="list-head">내 보유 종목</div>
+    ${holdings.length? holdings.map(h=>`
+      <div class="hold-row">
+        <div class="hold-top"><span>${esc(h.name)}</span><span class="mono">${h.q}주</span></div>
+        <div class="hold-bottom"><span class="mono">평단 ${fmt(h.avg)}P</span><span class="mono" style="color:${h.plPct>=0?'var(--up)':'var(--down)'};font-weight:700;">${pctStr(h.plPct)}</span></div>
+      </div>
+    `).join('') : '<div style="font-size:12px;color:var(--faint);padding:0 0 10px;">보유 종목이 없습니다.</div>'}
+
+    <div class="list-head" style="margin-top:16px;">나의 거래내역</div>
+    ${(acc.history||[]).length ? acc.history.slice(0,14).map(h=>`
+      <div class="myorder-row">
+        <div style="display:flex;justify-content:space-between;">
+          <span style="color:${h.side==='buy'?'var(--up)':'var(--down)'};font-weight:700;">${h.side==='buy'?'매수':'매도'}${h.type==='market'?'(시장가)':''}</span>
+          <span class="mono" style="color:var(--faint);">${h.time}</span>
+        </div>
+        <div class="mono" style="margin-top:2px;">${esc(h.name)} 체결 ${h.filledQty||0}/${h.qty}주 @${fmt(h.price)}P</div>
+      </div>
+    `).join('') : '<div style="font-size:12px;color:var(--faint);">거래내역이 없습니다.</div>'}
+  `;
+}
+
+/* =========================================================
+   이벤트 바인딩
+========================================================= */
+document.getElementById('googleLoginBtn').onclick = handleGoogleLogin;
+document.getElementById('logoutBtn').onclick = handleLogout;
+document.getElementById('adminBtn').onclick = tryAdmin;
+document.getElementById('adminModalClose').onclick = closeAdminModal;
+document.getElementById('adminModalBg').onclick = (e)=>{ if (e.target.id==='adminModalBg') closeAdminModal(); };
+document.getElementById('addItemBtn').onclick = adminAddItem;
+document.getElementById('changeAdminPwBtn').onclick = adminChangePw;
+
+window.adminDelistItem = adminDelistItem;
+window.adminResetRef = adminResetRef;
+
+if (!db || !auth) {
+  document.getElementById('loginErr').textContent = 'Firebase 연결에 실패했습니다. 콘솔을 확인하세요.';
+}
+</script>
+</body>
+</html>
