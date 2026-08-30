@@ -17,6 +17,7 @@
     --gold:#C9A227; --gold-soft:#E8CF7A;
   }
   *{box-sizing:border-box;}
+  html, body{height:100%;}
   body{margin:0;background:var(--bg);color:var(--text);font-family:'Noto Sans KR',sans-serif;}
   .mono{font-family:'JetBrains Mono',monospace;}
   ::-webkit-scrollbar{width:8px;height:8px;} ::-webkit-scrollbar-thumb{background:var(--border);border-radius:4px;}
@@ -52,7 +53,7 @@
 
   /* body layout */
   #body{display:grid;grid-template-columns:250px 1fr 280px;flex:1;min-height:0;}
-  #itemList{border-right:1px solid var(--border);background:var(--panel);overflow-y:auto;max-height:calc(100vh - 46px);}
+  #itemList{border-right:1px solid var(--border);background:var(--panel);overflow-y:auto;min-height:0;height:100%;}
   .list-head{padding:10px 12px 4px;font-size:11px;color:var(--faint);font-weight:700;}
   .cat-tabs{display:flex;gap:4px;flex-wrap:wrap;padding:0 10px 8px;}
   .cat-tab{font-size:10.5px;padding:3px 8px;border-radius:12px;border:1px solid var(--border);color:var(--dim);background:transparent;}
@@ -68,7 +69,7 @@
   @keyframes flashUp{0%{background:var(--up-bg)}100%{background:transparent}}
   @keyframes flashDown{0%{background:var(--down-bg)}100%{background:transparent}}
 
-  #detail{padding:18px;overflow-y:auto;max-height:calc(100vh - 46px);}
+  #detail{padding:18px;overflow-y:auto;min-height:0;height:100%;}
   .detail-head{display:flex;justify-content:space-between;align-items:flex-start;}
   .price-big{font-size:26px;font-weight:800;}
   .chg{font-size:12px;font-weight:700;}
@@ -98,7 +99,7 @@
   .section-title{font-size:11px;color:var(--faint);font-weight:700;margin:18px 0 6px;}
   .trade-row{display:flex;justify-content:space-between;padding:7px 12px;border-top:1px solid var(--border-soft);font-size:11.5px;}
 
-  #portfolio{border-left:1px solid var(--border);background:var(--panel);padding:14px;overflow-y:auto;max-height:calc(100vh - 46px);}
+  #portfolio{border-left:1px solid var(--border);background:var(--panel);padding:14px;overflow-y:auto;min-height:0;height:100%;}
   .hold-row{padding:9px 0;border-top:1px solid var(--border-soft);}
   .hold-top{display:flex;justify-content:space-between;font-size:12.5px;font-weight:600;}
   .hold-bottom{display:flex;justify-content:space-between;font-size:11px;color:var(--dim);margin-top:2px;}
