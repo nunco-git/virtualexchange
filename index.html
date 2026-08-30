@@ -318,6 +318,7 @@ function enterMain(user){
   document.getElementById('loginScreen').style.display = 'none';
   document.getElementById('mainScreen').style.display = 'flex';
   document.getElementById('userDisplay').textContent = state.displayName + '님';
+  window.scrollTo(0, 0);
   attachListeners();
 }
 
